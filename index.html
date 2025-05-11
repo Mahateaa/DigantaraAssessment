@@ -9,7 +9,7 @@
     margin: 0;
     overflow: hidden;
     background: #181818;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Segoe UI';
   }
   #info {
     position: absolute;
@@ -47,7 +47,6 @@
   renderer.setClearColor(0x181818);
   document.body.appendChild(renderer.domElement);
 
-  // Controls
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.05;
@@ -55,7 +54,6 @@
   controls.maxDistance = 30;
   controls.target.set(0, 0.5, 0);
 
-  // Lights
   const dirLight = new THREE.DirectionalLight(0xffffff, 1);
   dirLight.position.set(5, 10, 7);
   dirLight.castShadow = true;
@@ -64,7 +62,6 @@
   const ambLight = new THREE.AmbientLight(0x404040, 0.5);
   scene.add(ambLight);
 
-  // Ground plane
   const groundMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9, metalness: 0.1 });
   const groundGeo = new THREE.PlaneGeometry(40, 40);
   const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -73,7 +70,6 @@
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Add objects
   const objects = [];
   const geometries = [
     new THREE.BoxGeometry(1, 1, 1),
@@ -93,13 +89,11 @@
     objects.push(mesh);
   }
 
-  // Raycaster
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
 
   let selectedObject = null;
 
-  // Outline material for stencil (slightly bigger mesh in black)
   const outlineMaterial = new THREE.MeshBasicMaterial({
     color: 0xffff00,
     side: THREE.BackSide
@@ -116,14 +110,12 @@
     return outlineMesh;
   }
 
-  // On resize
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Mouse / touch
   function onPointerDown(event) {
     event.preventDefault();
 
@@ -150,16 +142,13 @@
           }
         }
 
-        // Set new selected object
         selectedObject = picked;
 
-        // Add outline mesh
         const outlineMesh = createOutline(selectedObject);
         scene.add(outlineMesh);
         outlineMeshes.set(selectedObject, outlineMesh);
       }
     } else {
-      // Clicked empty space - remove highlight
       if (selectedObject) {
         const oldOutline = outlineMeshes.get(selectedObject);
         if (oldOutline) {
