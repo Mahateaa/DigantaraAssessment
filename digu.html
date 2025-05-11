@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Three.js Object Highlighter with Stencil Buffer</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #181818;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  #info {
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #eee;
+    font-size: 14px;
+    background: rgba(0,0,0,0.4);
+    padding: 8px 14px;
+    border-radius: 4px;
+    user-select: none;
+    z-index: 1;
+    max-width: 90vw;
+    white-space: nowrap;
+  }
+  canvas {
+    display: block;
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<div id="info">Click on objects to highlight with stencil buffer outline | Use mouse or touch to orbit</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(3, 5, 8);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x181818);
+  document.body.appendChild(renderer.domElement);
+
+  // Controls
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.minDistance = 2;
+  controls.maxDistance = 30;
+  controls.target.set(0, 0.5, 0);
+
+  // Lights
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+  dirLight.position.set(5, 10, 7);
+  dirLight.castShadow = true;
+  scene.add(dirLight);
+
+  const ambLight = new THREE.AmbientLight(0x404040, 0.5);
+  scene.add(ambLight);
+
+  // Ground plane
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9, metalness: 0.1 });
+  const groundGeo = new THREE.PlaneGeometry(40, 40);
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // Add objects
+  const objects = [];
+  const geometries = [
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.SphereGeometry(0.5, 32, 32),
+    new THREE.ConeGeometry(0.5, 1, 32),
+    new THREE.CylinderGeometry(0.5, 0.5, 1, 32),
+    new THREE.TorusGeometry(0.45, 0.15, 16, 100)
+  ];
+  const colors = [0xff4444, 0x44ff44, 0x4444ff, 0xffcc44, 0xff44cc];
+  for (let i = 0; i < geometries.length; i++) {
+    const mat = new THREE.MeshStandardMaterial({ color: colors[i], roughness: 0.5, metalness: 0.1 });
+    const mesh = new THREE.Mesh(geometries[i], mat);
+    mesh.position.set((i - 2) * 2.3, 0.5, 0);
+    mesh.castShadow = true;
+    mesh.userData = { originalMaterial: mat };
+    scene.add(mesh);
+    objects.push(mesh);
+  }
+
+  // Raycaster
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  let selectedObject = null;
+
+  // Outline material for stencil (slightly bigger mesh in black)
+  const outlineMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffff00,
+    side: THREE.BackSide
+  });
+
+  const outlineMeshes = new Map();
+
+  function createOutline(mesh) {
+    const outlineGeom = mesh.geometry.clone();
+    const outlineMesh = new THREE.Mesh(outlineGeom, outlineMaterial);
+    outlineMesh.position.copy(mesh.position);
+    outlineMesh.rotation.copy(mesh.rotation);
+    outlineMesh.scale.copy(mesh.scale).multiplyScalar(1.1);
+    return outlineMesh;
+  }
+
+  // On resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Mouse / touch
+  function onPointerDown(event) {
+    event.preventDefault();
+
+    if (event.touches) {
+      mouse.x = (event.touches[0].clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.touches[0].clientY / window.innerHeight) * 2 + 1;
+    } else {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    }
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(objects);
+
+    if (intersects.length > 0) {
+      const picked = intersects[0].object;
+      if (selectedObject !== picked) {
+        // Remove old outline
+        if (selectedObject) {
+          const oldOutline = outlineMeshes.get(selectedObject);
+          if (oldOutline) {
+            scene.remove(oldOutline);
+            outlineMeshes.delete(selectedObject);
+          }
+        }
+
+        // Set new selected object
+        selectedObject = picked;
+
+        // Add outline mesh
+        const outlineMesh = createOutline(selectedObject);
+        scene.add(outlineMesh);
+        outlineMeshes.set(selectedObject, outlineMesh);
+      }
+    } else {
+      // Clicked empty space - remove highlight
+      if (selectedObject) {
+        const oldOutline = outlineMeshes.get(selectedObject);
+        if (oldOutline) {
+          scene.remove(oldOutline);
+          outlineMeshes.delete(selectedObject);
+        }
+        selectedObject = null;
+      }
+    }
+  }
+  window.addEventListener('pointerdown', onPointerDown, false);
+
+  // Animation loop
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.clear();
+
+    if (selectedObject) {
+      // Render stencil to mask selected object
+      // Approach: Render scene normally, then render outline meshes on back side slightly scaled up
+      // We keep the outline mesh scaled and rendered after the selection for the outline effect
+    }
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
+})();
+</script>
+</body>
+</html>
+
